@@ -35,21 +35,39 @@
     .ok { color: #9BE7B9; } .bad { color: #FFB4A8; }
     #help { position: fixed; inset: 0; display: none; align-items: center; justify-content: center; padding: 24px; background: #14213D; text-align: center; }
     #help p { max-width: 420px; line-height: 1.5; }
+    #manual { position: fixed; left: 0; right: 0; bottom: 0; display: none; padding: 16px 16px calc(20px + env(safe-area-inset-bottom));
+              background: #14213D; }
+    #manual form { display: flex; gap: 10px; max-width: 480px; margin: 0 auto; }
+    #manual input { flex: 1; min-width: 0; min-height: 52px; border-radius: 12px; border: 2px solid #FFF; padding: 0 14px;
+                    font-size: 20px; letter-spacing: .1em; text-transform: uppercase; }
+    label.btn { position: relative; overflow: hidden; cursor: pointer; }
+    label.btn input { position: absolute; inset: 0; opacity: 0; }
   </style>
 </head>
 <body>
   <video id="video" playsinline muted autoplay></video>
   <div class="frame" aria-hidden="true"></div>
   <div class="top">Apunta al QR de la etiqueta<div id="msg" role="status" aria-live="polite"></div></div>
-  <div class="bottom">
+  <div class="bottom" id="bottomBar">
     <button id="torch" type="button" hidden>Linterna</button>
+    <label class="btn">Tomar foto<input id="photo" type="file" accept="image/*" capture="environment" aria-label="Tomar foto del QR"></label>
+    <button id="typeBtn" type="button">Escribir código</button>
     <a class="btn" id="back" href="#">Volver a la app</a>
+  </div>
+  <div id="manual">
+    <form id="manualForm">
+      <input id="code" type="text" maxlength="20" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="K7M2-9XQ4-P2" aria-label="Código de la etiqueta">
+      <button type="submit">Abrir</button>
+    </form>
+    <p style="text-align:center;margin:10px 0 0"><button type="button" id="manualClose">Volver a la cámara</button></p>
   </div>
   <div id="help" role="alert">
     <div>
       <p id="helpText">No pudimos abrir la cámara.</p>
       <p>Revisa que el navegador tenga permiso de cámara para esta página (ícono junto a la dirección) y vuelve a intentarlo.</p>
       <p><button type="button" onclick="location.reload()">Intentar de nuevo</button></p>
+      <p><label class="btn">Tomar foto del QR<input id="photo2" type="file" accept="image/*" capture="environment" aria-label="Tomar foto del QR"></label></p>
+      <p><button type="button" id="typeBtn2">Escribir código</button></p>
       <p><a class="btn" id="back2" href="#">Volver a la app</a></p>
     </div>
   </div>
@@ -152,6 +170,57 @@
             show(err && err.name === 'NotAllowedError' ? 'No diste permiso para usar la cámara.' : 'No pudimos abrir la cámara.');
           });
       }
+
+      // ---- Alternativas: foto del QR y código escrito
+      function decodeImageFile(file) {
+        if (!file) return;
+        msg.className = ''; msg.textContent = 'Leyendo la foto…';
+        var url = URL.createObjectURL(file);
+        var img = new Image();
+        img.onload = function () {
+          var tryAt = function (maxSide) {
+            var scale = Math.min(1, maxSide / Math.max(img.naturalWidth, img.naturalHeight));
+            var c = document.createElement('canvas');
+            c.width = Math.round(img.naturalWidth * scale); c.height = Math.round(img.naturalHeight * scale);
+            var g = c.getContext('2d', { willReadFrequently: true });
+            g.drawImage(img, 0, 0, c.width, c.height);
+            if (detector) return detector.detect(c).then(function (r) { return r && r[0] ? r[0].rawValue : ''; }, function () { return ''; });
+            var d = g.getImageData(0, 0, c.width, c.height);
+            var r = window.jsQR ? window.jsQR(d.data, c.width, c.height, { inversionAttempts: 'attemptBoth' }) : null;
+            return Promise.resolve(r ? r.data : '');
+          };
+          tryAt(1600).then(function (t) { return t || tryAt(800); }).then(function (text) {
+            URL.revokeObjectURL(url);
+            if (text && tokenFrom(text)) { document.getElementById('help').style.display = 'none'; found(text); }
+            else { msg.className = 'bad'; msg.textContent = 'No encontramos un QR en la foto. Acércate y que se vea completo.'; }
+          });
+        };
+        img.onerror = function () { URL.revokeObjectURL(url); msg.className = 'bad'; msg.textContent = 'No pudimos abrir esa foto.'; };
+        img.src = url;
+      }
+      ['photo', 'photo2'].forEach(function (id) {
+        document.getElementById(id).addEventListener('change', function (e) { decodeImageFile(e.target.files && e.target.files[0]); e.target.value = ''; });
+      });
+      function openManual() {
+        document.getElementById('help').style.display = 'none';
+        document.getElementById('bottomBar').style.display = 'none';
+        document.getElementById('manual').style.display = 'block';
+        document.getElementById('code').focus();
+      }
+      document.getElementById('typeBtn').addEventListener('click', openManual);
+      document.getElementById('typeBtn2').addEventListener('click', openManual);
+      document.getElementById('manualClose').addEventListener('click', function () {
+        document.getElementById('manual').style.display = 'none';
+        document.getElementById('bottomBar').style.display = 'flex';
+        if (!stream) location.reload();
+      });
+      document.getElementById('manualForm').addEventListener('submit', function (e) {
+        e.preventDefault();
+        var v = document.getElementById('code').value;
+        if (tokenFrom(v)) found(v);
+        else { document.getElementById('manual').style.display = 'none'; document.getElementById('bottomBar').style.display = 'flex';
+               msg.className = 'bad'; msg.textContent = 'Ese código no es válido. Son 10 letras o números, como K7M2-9XQ4-P2.'; }
+      });
 
       if ('BarcodeDetector' in window) {
         window.BarcodeDetector.getSupportedFormats().then(function (f) {
