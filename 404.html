@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="referrer" content="no-referrer">
+  <meta name="robots" content="noindex">
+  <title>QR-APP.STORE</title>
+  <!--
+    =========================================================================
+    17 - EXTERNO / qr-app.store / 404.html (copia EXACTA de index.html: GitHub Pages la muestra para cualquier ruta, así /TOKEN también funciona)
+    Página de redirección para los QR impresos (GitHub Pages).
+
+    https://qr-app.store/?q=K7M29XQ4P2  →  <APP_URL>?q=K7M29XQ4P2
+
+    - No guarda nada, no pide datos, no tiene secretos.
+    - Solo redirige a UNA dirección fija (APP_URL) y solo con un código
+      válido de 10 caracteres: no se puede usar para mandar a la gente a
+      otro sitio (sin "redirección abierta").
+    - Si cambia la URL de Apps Script, se cambia APP_URL aquí y todas las
+      etiquetas impresas siguen funcionando.
+    =========================================================================
+  -->
+  <style>
+    :root { color-scheme: light dark; }
+    body { margin: 0; min-height: 100vh; display: flex; align-items: center; justify-content: center;
+           font-family: Arial, Helvetica, sans-serif; background: #EEF0F3; color: #1F2937; text-align: center; }
+    main { padding: 32px 20px; max-width: 420px; }
+    img { height: 80px; width: auto; max-width: 260px; }
+    a.btn { display: inline-block; margin-top: 20px; padding: 14px 24px; border-radius: 10px;
+            background: #14213D; color: #FFFFFF; font-weight: bold; text-decoration: none; }
+    @media (prefers-color-scheme: dark) { body { background: #111418; color: #E8ECF3; } }
+  </style>
+  <script>
+    (function () {
+      // ======== ÚNICO DATO A CONFIGURAR: la URL del Web App (termina en /exec) ========
+      var APP_URL = 'https://script.google.com/macros/s/AKfycbzRMGXEKrzR4lne_fIxkq8Pz6w72c1-pOizotrwC_a8iwId9LVgkzVFRLaPvX59Ow32/exec';
+      // ===================================================================================
+
+      var APP_RE = /^https:\/\/script\.google\.com\/(a\/[^\/\s]+\/)?macros\/s\/[A-Za-z0-9_-]{20,}\/exec$/;
+      var TOKEN_RE = /^[0-9A-HJKMNP-TV-Z]{10}$/;
+
+      function normalize(v) {
+        var s = String(v || '').toUpperCase().replace(/[\s-]/g, '').replace(/[IL]/g, '1').replace(/O/g, '0');
+        return TOKEN_RE.test(s) ? s : '';
+      }
+
+      var params = new URLSearchParams(window.location.search);
+      // Formatos aceptados: /?q=TOKEN (el que se imprime) y /TOKEN (por si alguien lo escribe).
+      var token = normalize(params.get('q')) || normalize(window.location.pathname.replace(/^\/+|\/+$/g, ''));
+
+      window.__APP_OK__ = APP_RE.test(APP_URL);
+      window.__TARGET__ = APP_URL + (token ? '?q=' + token : '');
+      if (window.__APP_OK__) window.location.replace(window.__TARGET__);
+    })();
+  </script>
+</head>
+<body>
+  <main>
+    <img src="https://res.cloudinary.com/skyhxqxv/image/upload/f_auto,q_auto/h_160,c_fit,f_auto,q_auto/Logotipo_QR-APP.STORE_minimalista" alt="QR-APP.STORE">
+    <p id="msg">Abriendo tu inventario…</p>
+    <noscript><p>Activa JavaScript para continuar.</p></noscript>
+    <a class="btn" id="go" href="#" hidden>Entrar</a>
+  </main>
+  <script>
+    if (!window.__APP_OK__) {
+      document.getElementById('msg').textContent = 'Esta página aún no está configurada.';
+    } else {
+      setTimeout(function () {
+        var a = document.getElementById('go');
+        a.hidden = false;
+        a.href = window.__TARGET__;
+        document.getElementById('msg').textContent = 'Si no se abrió solo, toca el botón.';
+      }, 2500);
+    }
+  </script>
+</body>
+</html>

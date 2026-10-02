@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="color-scheme" content="only light">
+  <meta name="referrer" content="no-referrer">
+  <meta name="robots" content="noindex">
+  <title>Escanear · QR-APP.STORE</title>
+  <!--
+    =========================================================================
+    17 - EXTERNO / qr-app.store / escanear.html
+    Escáner con cámara para Inventory QR Shell (GitHub Pages).
+
+    Por qué existe: Google Apps Script muestra la app dentro de un marco que no
+    recibe permiso de cámara. Esta página es normal (no está en un marco), así
+    que el navegador sí deja usar la cámara.
+
+    Qué hace: lee el QR → saca el código de 10 caracteres → abre la app en
+    ese producto (APP_URL?q=CÓDIGO). No guarda nada ni envía datos a terceros.
+    Solo redirige a APP_URL (dirección fija) y solo con un código válido.
+    =========================================================================
+  -->
+  <style>
+    html, body { margin: 0; height: 100%; background: #000; color: #FFF; font-family: Arial, Helvetica, sans-serif; }
+    #video { position: fixed; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+    .frame { position: fixed; left: 50%; top: 45%; width: min(70vw, 320px); aspect-ratio: 1; transform: translate(-50%, -50%);
+             border: 4px solid #F2C12E; border-radius: 18px; box-shadow: 0 0 0 100vmax rgba(0,0,0,.45); }
+    .top, .bottom { position: fixed; left: 0; right: 0; padding: 16px; text-align: center; }
+    .top { top: 0; padding-top: calc(16px + env(safe-area-inset-top)); font-weight: bold; font-size: 18px; }
+    .bottom { bottom: 0; padding-bottom: calc(20px + env(safe-area-inset-bottom)); display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; }
+    button, a.btn { min-height: 52px; padding: 12px 20px; border-radius: 12px; border: 2px solid #FFF; background: rgba(0,0,0,.5);
+                    color: #FFF; font-size: 17px; font-weight: bold; text-decoration: none; display: inline-flex; align-items: center; }
+    #msg { margin-top: 8px; font-size: 16px; font-weight: normal; min-height: 1.3em; }
+    .ok { color: #9BE7B9; } .bad { color: #FFB4A8; }
+    #help { position: fixed; inset: 0; display: none; align-items: center; justify-content: center; padding: 24px; background: #14213D; text-align: center; }
+    #help p { max-width: 420px; line-height: 1.5; }
+  </style>
+</head>
+<body>
+  <video id="video" playsinline muted autoplay></video>
+  <div class="frame" aria-hidden="true"></div>
+  <div class="top">Apunta al QR de la etiqueta<div id="msg" role="status" aria-live="polite"></div></div>
+  <div class="bottom">
+    <button id="torch" type="button" hidden>Linterna</button>
+    <a class="btn" id="back" href="#">Volver a la app</a>
+  </div>
+  <div id="help" role="alert">
+    <div>
+      <p id="helpText">No pudimos abrir la cámara.</p>
+      <p>Revisa que el navegador tenga permiso de cámara para esta página (ícono junto a la dirección) y vuelve a intentarlo.</p>
+      <p><button type="button" onclick="location.reload()">Intentar de nuevo</button></p>
+      <p><a class="btn" id="back2" href="#">Volver a la app</a></p>
+    </div>
+  </div>
+  <script src="jsqr.min.js"></script>
+  <script>
+    (function () {
+      'use strict';
+      // ======== ÚNICO DATO A CONFIGURAR: la URL del Web App (termina en /exec) ========
+      var APP_URL = 'https://script.google.com/macros/s/AKfycbzRMGXEKrzR4lne_fIxkq8Pz6w72c1-pOizotrwC_a8iwId9LVgkzVFRLaPvX59Ow32/exec';
+      // ===================================================================================
+      var APP_RE = /^https:\/\/script\.google\.com\/(a\/[^\/\s]+\/)?macros\/s\/[A-Za-z0-9_-]{20,}\/exec$/;
+      var TOKEN_RE = /^[0-9A-HJKMNP-TV-Z]{10}$/;
+      var video = document.getElementById('video');
+      var msg = document.getElementById('msg');
+      var stream = null, detector = null, busy = false, done = false, lastBad = 0;
+
+      if (!APP_RE.test(APP_URL)) { show('Esta página aún no está configurada.'); return; }
+      document.getElementById('back').href = APP_URL;
+      document.getElementById('back2').href = APP_URL;
+
+      function show(text) {
+        document.getElementById('helpText').textContent = text;
+        document.getElementById('help').style.display = 'flex';
+      }
+
+      /** Código de 10 caracteres desde una URL con ?q=, una ruta /CÓDIGO o el código suelto. */
+      function tokenFrom(text) {
+        var s = String(text || '').trim();
+        var m = s.match(/[?&]q=([^&#\s]+)/i);
+        if (m) s = decodeURIComponent(m[1]);
+        else if (/^https?:\/\//i.test(s)) s = s.replace(/^https?:\/\/[^\/]+\/?/i, '').replace(/[\/?#].*$/, '');
+        s = s.toUpperCase().replace(/[\s-]/g, '').replace(/[IL]/g, '1').replace(/O/g, '0');
+        return TOKEN_RE.test(s) ? s : '';
+      }
+
+      function found(text) {
+        var token = tokenFrom(text);
+        if (!token) {
+          if (Date.now() - lastBad > 2500) {
+            lastBad = Date.now();
+            msg.className = 'bad';
+            msg.textContent = 'Ese QR no es una etiqueta del inventario.';
+          }
+          return;
+        }
+        done = true;
+        if (navigator.vibrate) navigator.vibrate(80);
+        msg.className = 'ok';
+        msg.textContent = 'Abriendo el producto…';
+        if (stream) stream.getTracks().forEach(function (t) { t.stop(); });
+        window.location.replace(APP_URL + '?q=' + token);
+      }
+
+      function scan() {
+        if (done) return;
+        if (video.readyState >= 2 && !busy) {
+          busy = true;
+          var w = Math.min(720, video.videoWidth), h = Math.round(video.videoHeight * (w / video.videoWidth));
+          var canvas = document.createElement('canvas');
+          canvas.width = w; canvas.height = h;
+          var g = canvas.getContext('2d', { willReadFrequently: true });
+          g.drawImage(video, 0, 0, w, h);
+          var next = function (text) { busy = false; if (text) found(text); };
+          if (detector) {
+            detector.detect(canvas).then(function (c) { next(c && c[0] ? c[0].rawValue : ''); }, function () { next(''); });
+          } else if (window.jsQR) {
+            var img = g.getImageData(0, 0, w, h);
+            var r = window.jsQR(img.data, w, h, { inversionAttempts: 'dontInvert' });
+            next(r ? r.data : '');
+          } else { next(''); }
+        }
+        setTimeout(scan, 180);
+      }
+
+      function setupTorch() {
+        try {
+          var track = stream.getVideoTracks()[0];
+          var caps = track.getCapabilities ? track.getCapabilities() : {};
+          if (!caps.torch) return;
+          var on = false, btn = document.getElementById('torch');
+          btn.hidden = false;
+          btn.addEventListener('click', function () {
+            on = !on;
+            track.applyConstraints({ advanced: [{ torch: on }] }).catch(function () {});
+            btn.textContent = on ? 'Apagar linterna' : 'Linterna';
+          });
+        } catch (e) { /* sin linterna */ }
+      }
+
+      function start() {
+        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) { show('Este navegador no permite usar la cámara.'); return; }
+        navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 } }, audio: false })
+          .then(function (s) {
+            stream = s;
+            video.srcObject = s;
+            var p = video.play(); if (p && p.catch) p.catch(function () {});
+            setupTorch();
+            scan();
+          }, function (err) {
+            show(err && err.name === 'NotAllowedError' ? 'No diste permiso para usar la cámara.' : 'No pudimos abrir la cámara.');
+          });
+      }
+
+      if ('BarcodeDetector' in window) {
+        window.BarcodeDetector.getSupportedFormats().then(function (f) {
+          if (f.indexOf('qr_code') !== -1) detector = new window.BarcodeDetector({ formats: ['qr_code'] });
+          start();
+        }, start);
+      } else {
+        start();
+      }
+    })();
+  </script>
+</body>
+</html>
