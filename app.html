@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <title>QR-APP.STORE</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="color-scheme" content="only light">
+  <meta name="referrer" content="no-referrer">
+  <link rel="icon" type="image/png" href="https://res.cloudinary.com/skyhxqxv/image/upload/f_auto,q_auto/w_64,h_64,c_pad,f_png/Logotipo_QR-APP.STORE_minimalista.png">
+  <!--
+    =========================================================================
+    17 - EXTERNO / qr-app.store / app.html
+    Página que muestra QR-APP.STORE dentro de tu sitio (iframe).
+
+    - Si la abren con ?q=CÓDIGO (por ejemplo desde una etiqueta), le pasa
+      ese código a la app para que abra el producto.
+    - La app solo funciona dentro de páginas permitidas (Config.gs →
+      EMBED.ALLOWED_ORIGINS): qr-app.store y qr-app-store.github.io.
+    - Único dato a configurar: APP_URL (la URL /exec de tu Web App).
+    =========================================================================
+  -->
+  <style>
+    html, body { width: 100%; height: 100%; margin: 0; padding: 0; overflow: hidden; background: #FFFFFF; }
+    iframe { width: 100vw; height: 100vh; height: 100dvh; border: none; display: block; }
+  </style>
+</head>
+<body>
+  <iframe id="app" title="QR-APP.STORE" allow="clipboard-write; web-share; fullscreen" allowfullscreen></iframe>
+  <script>
+    (function () {
+      'use strict';
+      // ======== ÚNICO DATO A CONFIGURAR: la URL del Web App (termina en /exec) ========
+      var APP_URL = 'https://script.google.com/macros/s/AKfycbzRMGXEKrzR4lne_fIxkq8Pz6w72c1-pOizotrwC_a8iwId9LVgkzVFRLaPvX59Ow32/exec';
+      // ===================================================================================
+      var params = new URLSearchParams(window.location.search);
+      var q = String(params.get('q') || '').toUpperCase().replace(/[\s-]/g, '');
+      var src = APP_URL + (/^[0-9A-HJKMNP-TV-Z]{10}$/.test(q) ? '?q=' + q : '');
+      document.getElementById('app').src = src;
+    })();
+  </script>
+</body>
+</html>
