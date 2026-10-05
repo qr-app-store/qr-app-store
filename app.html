@@ -13,7 +13,8 @@
     Página que muestra QR-APP.STORE dentro de tu sitio (iframe).
 
     - Si la abren con ?q=CÓDIGO (por ejemplo desde una etiqueta), le pasa
-      ese código a la app para que abra el producto.
+      ese código a la app para que abra el producto. Con ?fotos=… (regreso
+      de la app de cámara) le pasa el permiso de las fotos.
     - La app solo funciona dentro de páginas permitidas (Config.gs →
       EMBED.ALLOWED_ORIGINS): qr-app.store y qr-app-store.github.io.
     - Único dato a configurar: APP_URL (la URL /exec de tu Web App).
@@ -34,7 +35,10 @@
       // ===================================================================================
       var params = new URLSearchParams(window.location.search);
       var q = String(params.get('q') || '').toUpperCase().replace(/[\s-]/g, '');
+      var fotos = String(params.get('fotos') || '');
       var src = APP_URL + (/^[0-9A-HJKMNP-TV-Z]{10}$/.test(q) ? '?q=' + q : '');
+      // Regreso de la app de cámara (fotos.html): se pasa el permiso a la app.
+      if (/^[A-Za-z0-9_-]{20,40}$/.test(fotos)) src = APP_URL + '?fotos=' + fotos;
       document.getElementById('app').src = src;
     })();
   </script>

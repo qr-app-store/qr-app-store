@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="color-scheme" content="only light">
+  <meta name="referrer" content="no-referrer">
+  <meta name="robots" content="noindex">
+  <title>Fotos · QR-APP.STORE</title>
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;600;700;800&display=swap" rel="stylesheet">
+  <!--
+    =========================================================================
+    17 - EXTERNO / qr-app.store / fotos.html
+    App de cámara de QR-APP.STORE para fotos de productos (GitHub Pages).
+
+    Google no da cámara dentro de la app; esta página sí. Flujo:
+      la app abre  fotos.html#t=PERMISO&n=MÁXIMO[&r=REGRESO]
+      → tomas hasta 5 fotos (o las eliges de la galería)
+      → "Listo": se reducen y se envían a la app con el PERMISO
+      → vuelves a la app (?fotos=PERMISO) con todo lo que habías escrito.
+    El PERMISO es de un solo uso, vence en 30 minutos y solo sirve para tu
+    empresa. Esta página no guarda nada ni habla con nadie más.
+    Único dato a configurar: APP_URL (la URL /exec de tu Web App).
+    =========================================================================
+  -->
+  <style>
+    :root { --blue: #0B3C8C; --accent: #1565C0; --tint: #E3EEFC; }
+    html, body { margin: 0; height: 100%; background: #000; color: #FFF; font-family: Montserrat, Arial, Helvetica, sans-serif; }
+    #video { position: fixed; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+    .top { position: fixed; top: 0; left: 0; right: 0; padding: calc(12px + env(safe-area-inset-top)) 16px 12px; display: flex; align-items: center; justify-content: space-between; gap: 10px; background: linear-gradient(rgba(0,0,0,.55), rgba(0,0,0,0)); }
+    .count { font-weight: 800; font-size: 18px; }
+    .bottom { position: fixed; left: 0; right: 0; bottom: 0; padding: 12px 16px calc(18px + env(safe-area-inset-bottom)); background: linear-gradient(rgba(0,0,0,0), rgba(0,0,0,.7)); }
+    .strip { display: flex; gap: 8px; overflow-x: auto; min-height: 72px; margin-bottom: 12px; }
+    .thumb { position: relative; flex: none; width: 64px; height: 64px; border-radius: 10px; overflow: hidden; border: 2px solid #FFF; }
+    .thumb img { width: 100%; height: 100%; object-fit: cover; }
+    .thumb button { position: absolute; top: 2px; right: 2px; width: 26px; height: 26px; border-radius: 50%; border: 0; background: rgba(0,0,0,.7); color: #FFF; font-size: 18px; line-height: 26px; padding: 0; }
+    .row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+    button, label.btn, a.btn { min-height: 52px; padding: 10px 16px; border-radius: 14px; border: 2px solid #FFF; background: rgba(0,0,0,.45); color: #FFF;
+      font: 700 16px Montserrat, Arial, sans-serif; text-decoration: none; display: inline-flex; align-items: center; justify-content: center; cursor: pointer; }
+    label.btn { position: relative; overflow: hidden; }
+    label.btn input { position: absolute; inset: 0; opacity: 0; }
+    #shutter { width: 84px; height: 84px; min-height: 84px; border-radius: 50%; border: 6px solid #FFF; background: var(--accent); padding: 0; }
+    #shutter:disabled { opacity: .4; }
+    #done { background: var(--accent); border-color: var(--accent); }
+    #done:disabled { opacity: .5; }
+    #flash { position: fixed; inset: 0; background: #FFF; opacity: 0; pointer-events: none; transition: opacity .15s; }
+    #msg { position: fixed; left: 16px; right: 16px; top: 45%; text-align: center; font-weight: 700; font-size: 18px; text-shadow: 0 1px 3px #000; }
+    #overlay { position: fixed; inset: 0; display: none; align-items: center; justify-content: center; padding: 24px; background: var(--blue); text-align: center; }
+    #overlay p { max-width: 420px; line-height: 1.5; margin: 0 auto 16px; }
+  </style>
+</head>
+<body>
+  <video id="video" playsinline muted autoplay></video>
+  <div id="flash"></div>
+  <div class="top">
+    <a class="btn" id="cancel" href="#">Cancelar</a>
+    <span class="count" id="count" aria-live="polite">0 de 5</span>
+    <span>
+      <button id="torch" type="button" hidden aria-label="Linterna">Luz</button>
+      <button id="flip" type="button" hidden aria-label="Cambiar cámara">↺</button>
+    </span>
+  </div>
+  <div id="msg" role="status"></div>
+  <div class="bottom">
+    <div class="strip" id="strip" aria-label="Fotos tomadas"></div>
+    <div class="row">
+      <label class="btn">Galería<input id="gallery" type="file" accept="image/*" multiple aria-label="Elegir fotos de la galería"></label>
+      <button id="shutter" type="button" aria-label="Tomar foto"></button>
+      <button id="done" type="button" disabled>Listo</button>
+    </div>
+  </div>
+  <div id="overlay" role="alert">
+    <div>
+      <p id="overlayText"></p>
+      <p><label class="btn">Elegir fotos de la galería<input id="gallery2" type="file" accept="image/*" multiple></label></p>
+      <p><button type="button" id="retry" hidden>Intentar de nuevo</button></p>
+      <p><a class="btn" id="cancel2" href="#">Volver a la app</a></p>
+    </div>
+  </div>
+  <script>
+    (function () {
+      'use strict';
+      // ======== ÚNICO DATO A CONFIGURAR: la URL del Web App (termina en /exec) ========
+      var APP_URL = 'https://script.google.com/macros/s/AKfycbzRMGXEKrzR4lne_fIxkq8Pz6w72c1-pOizotrwC_a8iwId9LVgkzVFRLaPvX59Ow32/exec';
+      // ===================================================================================
+      var APP_RE = /^https:\/\/script\.google\.com\/(a\/[^\/\s]+\/)?macros\/s\/[A-Za-z0-9_-]{20,}\/exec$/;
+      var RETURN_OK = [/^https:\/\/qr-app\.store\/[A-Za-z0-9._\/-]*$/, /^https:\/\/www\.qr-app\.store\/[A-Za-z0-9._\/-]*$/, /^https:\/\/qr-app-store\.github\.io\/qr-app-store\/[A-Za-z0-9._\/-]*$/];
+      var FULL_MAX = 1600, FULL_Q = 0.82, THUMB_MAX = 240, THUMB_Q = 0.65;
+
+      var hash = {};
+      String(window.location.hash || '').replace(/^#/, '').split('&').forEach(function (kv) {
+        var i = kv.indexOf('='); if (i > 0) { try { hash[kv.slice(0, i)] = decodeURIComponent(kv.slice(i + 1)); } catch (e) { /* ignorar */ } }
+      });
+      var TICKET = /^[A-Za-z0-9_-]{20,40}$/.test(hash.t || '') ? hash.t : '';
+      var MAX = Math.min(5, Math.max(1, parseInt(hash.n, 10) || 5));
+      var RETURN_URL = hash.r && RETURN_OK.some(function (re) { return re.test(hash.r); }) ? hash.r : APP_URL;
+      var BACK = RETURN_URL + (RETURN_URL.indexOf('?') === -1 ? '?' : '&') + 'fotos=' + encodeURIComponent(TICKET);
+
+      var $ = function (id) { return document.getElementById(id); };
+      var video = $('video'), msg = $('msg');
+      var shots = []; // { full, thumb, preview } (base64 sin prefijo, preview con prefijo)
+      var stream = null, facing = 'environment', torchOn = false, sending = false;
+
+      function overlay(text, retry) {
+        $('overlayText').textContent = text;
+        $('retry').hidden = !retry;
+        $('overlay').style.display = 'flex';
+      }
+      $('cancel').href = $('cancel2').href = BACK;
+      if (!APP_RE.test(APP_URL)) { overlay('Esta página aún no está configurada.'); return; }
+      if (!TICKET) { overlay('Abre la cámara desde QR-APP.STORE (botón "Tomar fotos").'); $('cancel').href = $('cancel2').href = RETURN_URL; return; }
+
+      function render() {
+        var strip = $('strip');
+        while (strip.firstChild) strip.removeChild(strip.firstChild);
+        shots.forEach(function (s, i) {
+          var box = document.createElement('div'); box.className = 'thumb';
+          var img = document.createElement('img'); img.src = s.preview; img.alt = 'Foto ' + (i + 1);
+          var x = document.createElement('button'); x.type = 'button'; x.textContent = '×'; x.setAttribute('aria-label', 'Borrar foto ' + (i + 1));
+          x.addEventListener('click', function () { shots.splice(i, 1); render(); });
+          box.appendChild(img); box.appendChild(x); strip.appendChild(box);
+        });
+        $('count').textContent = shots.length + ' de ' + MAX;
+        $('done').disabled = sending;
+        $('done').textContent = shots.length ? 'Listo (' + shots.length + ')' : 'Listo';
+        $('shutter').disabled = sending || shots.length >= MAX;
+      }
+
+      /** Reduce una imagen (video, foto) a JPEG: completa (1600 px) y miniatura (240 px). */
+      function encode(source, w, h) {
+        var make = function (max, q) {
+          var s = Math.min(1, max / Math.max(w, h));
+          var c = document.createElement('canvas');
+          c.width = Math.round(w * s); c.height = Math.round(h * s);
+          c.getContext('2d').drawImage(source, 0, 0, c.width, c.height);
+          return c.toDataURL('image/jpeg', q);
+        };
+        var full = make(FULL_MAX, FULL_Q), thumb = make(THUMB_MAX, THUMB_Q);
+        return { full: full.split(',')[1], thumb: thumb.split(',')[1], preview: thumb };
+      }
+
+      function snap() {
+        if (shots.length >= MAX || !stream || video.readyState < 2) return;
+        shots.push(encode(video, video.videoWidth, video.videoHeight));
+        if (navigator.vibrate) navigator.vibrate(40);
+        $('flash').style.opacity = '.8'; setTimeout(function () { $('flash').style.opacity = '0'; }, 120);
+        render();
+      }
+
+      function fromFiles(files) {
+        Array.prototype.slice.call(files || []).slice(0, MAX - shots.length).forEach(function (file) {
+          var url = URL.createObjectURL(file);
+          var img = new Image();
+          img.onload = function () { shots.push(encode(img, img.naturalWidth, img.naturalHeight)); URL.revokeObjectURL(url); $('overlay').style.display = 'none'; render(); };
+          img.onerror = function () { URL.revokeObjectURL(url); msg.textContent = 'No pudimos abrir una de las fotos.'; };
+          img.src = url;
+        });
+      }
+
+      /** Envía las fotos a la app (con el permiso) y vuelve. */
+      function send() {
+        if (sending) return;
+        if (!shots.length) { window.location.replace(BACK); return; }
+        sending = true; render();
+        msg.textContent = 'Subiendo ' + shots.length + (shots.length === 1 ? ' foto…' : ' fotos…');
+        var body = JSON.stringify({ kind: 'photos', ticket: TICKET, photos: shots.map(function (s) { return { full: s.full, thumb: s.thumb }; }) });
+        // "no-cors": Google no permite leer la respuesta desde otra página; basta con que llegue.
+        fetch(APP_URL, { method: 'POST', mode: 'no-cors', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: body })
+          .then(function () {
+            msg.textContent = 'Listo. Volviendo a la app…';
+            if (stream) stream.getTracks().forEach(function (t) { t.stop(); });
+            window.location.replace(BACK);
+          }, function () {
+            sending = false; render();
+            msg.textContent = '';
+            overlay('No se pudieron subir las fotos. Revisa tu conexión.', true);
+          });
+      }
+
+      function start() {
+        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) { overlay('Este navegador no permite usar la cámara. Puedes elegir fotos de la galería.'); return; }
+        if (stream) stream.getTracks().forEach(function (t) { t.stop(); });
+        navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: facing }, width: { ideal: 1920 }, height: { ideal: 1080 } }, audio: false })
+          .then(function (s) {
+            stream = s;
+            video.srcObject = s;
+            var p = video.play(); if (p && p.catch) p.catch(function () {});
+            try {
+              var track = s.getVideoTracks()[0];
+              var caps = track.getCapabilities ? track.getCapabilities() : {};
+              $('torch').hidden = !caps.torch;
+            } catch (e) { $('torch').hidden = true; }
+            navigator.mediaDevices.enumerateDevices().then(function (d) {
+              $('flip').hidden = d.filter(function (x) { return x.kind === 'videoinput'; }).length < 2;
+            }, function () {});
+          }, function (err) {
+            overlay(err && err.name === 'NotAllowedError'
+              ? 'No diste permiso para usar la cámara. Puedes permitirlo en el navegador o elegir fotos de la galería.'
+              : 'No pudimos abrir la cámara. Puedes elegir fotos de la galería.');
+          });
+      }
+
+      $('shutter').addEventListener('click', snap);
+      $('done').addEventListener('click', send);
+      $('retry').addEventListener('click', function () { $('overlay').style.display = 'none'; send(); });
+      $('gallery').addEventListener('change', function (e) { fromFiles(e.target.files); e.target.value = ''; });
+      $('gallery2').addEventListener('change', function (e) { fromFiles(e.target.files); e.target.value = ''; });
+      $('flip').addEventListener('click', function () { facing = facing === 'environment' ? 'user' : 'environment'; start(); });
+      $('torch').addEventListener('click', function () {
+        try { torchOn = !torchOn; stream.getVideoTracks()[0].applyConstraints({ advanced: [{ torch: torchOn }] }).catch(function () {}); } catch (e) { /* sin linterna */ }
+      });
+      render();
+      start();
+    })();
+  </script>
+</body>
+</html>
